@@ -1,0 +1,9 @@
+# binary
+*.dxe
+*.do
+
+# support
+*.xml
+*.vdw
+*.dpj
+*.map
