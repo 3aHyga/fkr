@@ -1,0 +1,90 @@
+
+ARCHITECTURE(ADSP-2185)
+
+SEARCH_DIR( $ADI_DSP\218x\lib )
+
+// specific code and data
+//$LIBRARIES =	;
+
+// Libraries from the command line are included in COMMAND_LINE_OBJECTS.
+// $OBJECTS = 218x_hdr.doj , 218x_exit.doj, $COMMAND_LINE_OBJECTS , libio.dlb , libc.dlb ;
+$OBJECTS = $COMMAND_LINE_OBJECTS;
+
+// 2189 has 32K words (24-bit) of Program RAM and 48K words (16-bit) of Data RAM
+MEMORY
+{
+    seg_inttab { TYPE(PM RAM) START(0x00000) END(0x0002f) WIDTH(24)   }
+    seg_code   { TYPE(PM RAM) START(0x00030) END(0x01fff) WIDTH(24)   }
+
+    seg_framedata  { TYPE(DM RAM) START(0x00000) END(0x01fff) WIDTH(16) }
+    seg_bufferdata { TYPE(DM RAM) START(0x02000) END(0x02fff) WIDTH(16) }
+    mem_heap	     { TYPE(DM RAM) START(0x003000) END(0x0034ff) WIDTH(16) }
+    mem_stack	     { TYPE(DM RAM) START(0x003500) END(0x003aff) WIDTH(16) }
+  //  seg_heap	   { TYPE(DM RAM) START(0x02000) END(0x02fff) WIDTH(16) }
+  //  seg_stack    { TYPE(DM RAM) START(0x03000) END(0x03fdf) WIDTH(16) }
+}
+
+PROCESSOR p0
+{
+    LINK_AGAINST( $COMMAND_LINE_LINK_AGAINST)
+    OUTPUT( $COMMAND_LINE_OUTPUT_FILE )
+
+    SECTIONS
+    {
+	sec_inttab
+	{
+	    INPUT_SECTIONS( $OBJECTS(interrupts) )
+	} >seg_inttab
+
+	sec_code
+	{
+	    INPUT_SECTIONS( $OBJECTS(program) )
+	} >seg_code
+
+	sec_framedata
+	{
+	    INPUT_SECTIONS( $OBJECTS(framedata) )
+	} >seg_framedata
+
+	sec_bufferdata
+	{
+	    INPUT_SECTIONS( $OBJECTS(bufferdata) )
+	} >seg_bufferdata
+
+	sec_stack
+	{
+	    ldf_stack_limit = .;
+	    ldf_stack_base  = . + MEMORY_SIZEOF(mem_stack) - 1;
+	} > mem_stack
+
+	sec_heap
+	{
+	    .heap      = .;
+	    .heap_size = MEMORY_SIZEOF(mem_heap);
+	    .heap_end  = . + MEMORY_SIZEOF(mem_heap) - 1;
+	} > mem_heap
+
+
+	// support for initialization, including C++
+//	  sec_ctor
+//	  {
+//	      INPUT_SECTIONS( $OBJECTS(ctor) )
+//	  } >seg_data1
+
+	// provide linker variables describing the stack (grows down)
+	//   ldf_stack_limit is the lowest address in the stack
+	//   ldf_stack_base is the highest address in the stack
+//	  sec_stack
+  //  /    {
+    //	      ldf_stack_limit = .;
+  //	      ldf_stack_base = . + MEMORY_SIZEOF(seg_stack) - 1;
+    //	  } >seg_stack
+      //
+ //	  sec_heap
+   //	  {
+     //       .heap = .;
+	   // .heap_size = MEMORY_SIZEOF(seg_heap);
+	//    .heap_end = . + MEMORY_SIZEOF(seg_heap) - 1;
+       // } >seg_heap
+    }
+}
