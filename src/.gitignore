@@ -1,9 +1,11 @@
 # binary
 *.dxe
 *.do
+*.bin
 
 # support
 *.xml
 *.vdw
 *.dpj
 *.map
+*.lst
