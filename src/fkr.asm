@@ -1,7 +1,7 @@
 /****************************FKR on ADSP 2185********************************/
-#define nx 256
+#define nx 592
 #define ny 291
-#define nk 16
+#define nk 37
 #define pause 148 - 10
 #define ncams 2
 
@@ -11,8 +11,6 @@
 .VAR	ROW = 0;
 .VAR	CAM1[3] = { 0, 0, 0 };
 .VAR	CAM2[3] = { 0, 0, 0 };
-//.VAR	  CAM_IDX[ncams] = { 0, 0 };
-//.VAR	  CAM_LEN[ncams] = { 0, 0 };
 
 .section/data	bufferdata;
 .VAR	BUFFER[nx] = "buffer.dat";
@@ -86,118 +84,34 @@ start:	M0 = 0; 		/* установка инкрементора M4 в 0 */
 	L5 = 0x1000 + nx * ny / 16;
 	L6 = 0;
 	L7 = 0;
-	L0 = 0;
+	L0 = 4;
 	L1 = 0;
 	AY1 = 1;
 	DM(I6,M4) = 0;		/* сброс счетчика кадров */
 	SE = 2; 		/* установка направления и количества сдвигов - влево на 2 разряда */
+	RESET FLAG_OUT;
 	ENA INTS;		/* разрешение прерываний */
 //	  AX0 = 1;
 //	  CNTR = 8; // nx * ny / ((nx * k / 8) * 8)
 loop1:	IDLE; //ожидание прерывания от таймера
-	JUMP loop1;
-
-
-frame:	DM(I1,M0) = 0;
-	POP STS;
-	IMASK = 0x205;		/* получение значение регистра IMASK из стека и размаскирование прерывания начала строки и таймера */
-//	  IMASK = 0x207;	  /* получение значение регистра IMASK из стека и размаскирование прерывания начала строки */
-	PUSH STS;		/* сохранение нового значения регистра IMASK в стек */
-	RTI;
-
-
-timer_p:  CNTR = nx / 16;
-rowloop: DO rowloop_exit UNTIL CE;
-	CNTR = 8;
-loop11:  DO loop11_exit UNTIL CE;
-	SR = ASHIFT MR0 (LO), MR0 = SR0;
-	AY0 = DM (I4, M5);
-loop11_exit:	 AR = MR0 OR AY0, MR0 = AR;
-	SR = ASHIFT MR0 BY 8 (LO);
-	DM(I5, M4) = SR0;
-	CNTR = 8;
-loop12:  DO loop12_exit UNTIL CE;
-	SR = ASHIFT MR1 (LO), MR0 = SR0;
-	AY0 = DM (I4, M5);
-loop12_exit:	 AR = MR0 OR AY0, MR0 = AR;
-	SR = ASHIFT MR0 BY 8 (LO);
-rowloop_exit:	PM(I5, M5) = MR0;
-	RTI;
-
-
-/*out_data:
-	IF FLAG_IN JUMP output_shift;
-	MR0 = DM(I6,M5);
-	IO(0) = MR0;
-	SET FLAG_OUT;
-	JUMP output_exit;
-output_shift:
-	SR = ASHIFT MR0 BY -8 (LO);
-	IO(0) = SR0;
-	RESET FLAG_OUT;
-output_exit: RTI;*/
-
-
-row:	IF LT RTI;
-	AY0 = 313;
-	AF = AR - AY0;
-	IF LT JUMP start_timer;
-	AY0 = 314;
-	AF = AR - AY0;
-	IF GE RTI;
+	IF NOT FLAG_IN JUMP loop1;
 start_performing:
 	IMASK = 0x10;
 	SE = -1;		 /* установка направления и количества сдвигов - вправо на 1 разряд */
-	I6 = 0x3FE1;
-	DM(I6,M5) = FRAME;	/* установка адреса BIAD в адрес FRAME */
-	DM(I6,M5) = 0;		/* установка адреса BEAD в 0 */
-	DM(I6,M5) = 5;		/* установка режима записи в ПД в двухбайтовом режиме */
 	I2 = CAM1 + 2;
 	I3 = CAM2 + 2;
 	L2 = CAM1 + 3;
 	L3 = CAM2 + 3;
 	CNTR = ny;
 	DO loopny UNTIL CE;
-	CNTR = nk;
+	CNTR = ny;
 	AX0 = 0;
 	AX1 = 0;
 	MR0 = 0;
 	MR1 = 0;
-	DO loopnk UNTIL CE;
-	MR2 = DM(I5,M4);
-	CALL loop8;
-	MR2 = PM(I5,M5);
-loopnk: CALL loop8;
-	I2 = CAM1;
-	I3 = CAM2;
-	DM(I2,M1) = AX0;
-	DM(I2,M1) = AX1;
-	DM(I2,M0) = 0;
-	DM(I3,M1) = MR0;
-	DM(I3,M1) = MR1;
-	DM(I3,M0) = 0;
-	// вывод через IO
-	RESET FL0;
-//	  SET FL0;
-//	  CNTR = 16;
-//	  DO loopout UNTIL CE;
-//loopout: NOP;
-//loopny:  NOP;
-loopny: SET FL0;	     /* установка счетчика адреса I6 в начало буфера данных кадра */
-	// вывод через BDMA
-	I6 = FRAME;
-	SE = 2; 		/* установка направления и количества сдвигов - влево на 2 разряда */
-	RTI;
-start_timer:
-	ENA TIMER;
-	DM(I0,M1) = BUFFER;	/* установка адрес смещения BUFFER как адрес входного регистра BIAD в  */
-	DM(I0,M1) = 0x2000;	/* установка адреса входного регистра BEAD в 0x2000 */
-	RTI;
-
-
-loop8:
-	CNTR = 8;
-	DO loop8_exit UNTIL CE;
+	DO loopny UNTIL CE;
+	CNTR = nx;
+	DO loopnx UNTIL CE;
 	AR = DM(I2,M0), AR = AR - AY1;
 	IF EQ JUMP second_cam;
 	AF = TSTBIT 0 OF MR2;
@@ -228,11 +142,67 @@ second1:
 second1_stopcnt:
 	AR = DM(I3,M0), AR = AR + AY1;
 	DM(I3,M0) = AR;
-loop8_exit: SR = ASHIFT MR2 (LO);
-	RTS;
+loopnx:
+	DM(I2,M1) = AX0;
+	DM(I2,M1) = AX1;
+	DM(I2,M1) = 0;
+	DM(I3,M1) = MR0;
+	DM(I3,M1) = MR1;
+	DM(I3,M1) = 0;
+	// вывод через BDMA
+	DM(I0,M5) = FRAME;	/* установка адреса BIAD в адрес FRAME */
+	DM(I0,M5) = 0;		/* установка адреса BEAD в 0 */
+	DM(I0,M5) = 5;		/* установка режима записи в ПД в двухбайтовом режиме */
+	// вывод через IO
+	RESET FL0;
+//	  SET FL0;
+//	  CNTR = 16;
+//	  DO loopout UNTIL CE;
+//loopout: IDLE;
+//loopny:  NOP;
+loopny: SET FL0;	     /* установка счетчика адреса I6 в начало буфера данных кадра */
+	I6 = FRAME;
+	SE = 2; 		/* установка направления и количества сдвигов - влево на 2 разряда */
+	RESET FLAG_OUT;
+	JUMP loop1;
 
 
-// tproc = tc * (12 + ny * (20 + nk * (4 + 2 * tloop8)))
-// tloop8 = 3 + 8 * (8 + 9 + 1) = 147
+frame:	DM(I1,M0) = 0;
+	POP STS;
+	IMASK = 0x205;		/* получение значение регистра IMASK из стека и размаскирование прерывания начала строки и таймера */
+//	  IMASK = 0x207;	  /* получение значение регистра IMASK из стека и размаскирование прерывания начала строки */
+	PUSH STS;		/* сохранение нового значения регистра IMASK в стек */
+	RTI;
+
+
+/*out_data:
+	IF FLAG_IN JUMP output_shift;
+	MR0 = DM(I6,M5);
+	IO(0) = MR0;
+	SET FLAG_OUT;
+	JUMP output_exit;
+output_shift:
+	SR = ASHIFT MR0 BY -8 (LO);
+	IO(0) = SR0;
+	RESET FLAG_OUT;
+output_exit: RTI;*/
+
+
+row:	IF LT RTI;
+	AY0 = 313;
+	AF = AR - AY0;
+	IF LT JUMP start_timer;
+	AY0 = 314;
+	AF = AR - AY0;
+	IF GE RTI;
+	RTI;
+
+start_timer:
+	ENA TIMER;
+	DM(I0,M1) = BUFFER;	/* установка адрес смещения BUFFER как адрес входного регистра BIAD в  */
+	DM(I0,M1) = 0x2000;	/* установка адреса входного регистра BEAD в 0x2000 */
+	RTI;
+
+
 
 eop:
