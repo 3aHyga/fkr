@@ -1,86 +1,91 @@
 /****************************FKR on ADSP 2185********************************/
-#define nx 592
-#define ny 291
-#define nk 37
-#define pause 148 - 10
-#define ncams 4
-#define ecams 1
+//Їа®Ја ¬¬  а ббзЁв ­­ п ­  ЇаЁс¬ ®¤­®Ј® Є ¤а , ®бв ­®ў ЇаЁс¬  Їа®Ёбе®¤Ёв Ї® ЇаЁс¬г 313 бва®Є, ўлў®¤ ў LPT ®вбгвбвўгҐв
+#define nx 440
+#define first_row 16
+#define last_row 307
+#define pause 34
+#define camscount 4
 #define camsize 1024
 
+#define ITIMER 0x1
+#define IRQ0   0x2
+#define IRQ1   0x4
+#define IRQ2   0x200
+#define IRQE   0x10
+
+#define IFRAME IRQ2
+#define IROW   IRQE
+#define IDATA1 IRQ0
+#define IDATA2 IRQ1
+
+
 .section/data	framedata;
-//.VAR	  MEMADDRBANK = 0;
 .VAR	FRAME = 0;
 .VAR	ROW = 0;
-.VAR	CAM1[camsize];
-.VAR	CAM2[camsize];
-.VAR	CAM3[camsize];
-.VAR	CAM4[camsize];
+.VAR	PAUSESW = 0;
+.VAR	FRAMESW = 0;
+.VAR	PROFILES[camscount];
 
-.section/data	bufferdata;
-//.VAR	  BUFFER[nx] = "buffer.dat";
-
-
-.section/pm	interrupts;	/*------Interrupt vector table------*/
-	ICNTL = 0x17;		/* настройка срабатывания прерываний по перепаду */
-	DIS TIMER;		/* запрет тиков таймера */
-	IMASK = 8;		/* маскирование всех прерываний кроме прерывания BDMA */
-	JUMP start1;
-cam3:				/* 0x0004: IRQ2 */
-	AX1 = DM(I0,M0);
-	DM(I6,M5) = AX1;
-	RTI; nop;
-	rti; nop; nop; nop;
-	rti; nop; nop; nop;
-start1: I0 = 0x3FE1;		/* 0x0010: SPORT0 передача */
-	M1 = 1; 		/* установка инкрементора M5 в 1 */
-	L0 = 0;
-	nop; nop; nop; nop;
-//	  DM(I0,M1) = 0x20;	  /* установка адреса BIAD в 0x20 */
-//	  DM(I0,M1) = 0x20;	  /* 0x0014: SPORT0 приём, установка адреса BEAD в 0x20 */
-//	  DM(I0,M1) = 0;	  /* установка направления - запись в ПП из БП с продолжением выполнения программы */
-//	  DM(I0,M1) = eop - 0x20; /* запуск копирования из БП в ПП */
-	JUMP start2;
-/*cam4: 			  /* 0x0018: IRQE, загрузка в регистр счетчика BWCOUNT количества требуемых слов и запуск загрузки */
-/*	AX1 = DM(I0,M0);
-	DM(I7,M5) = AX1;
-	RTI; nop;*/
-IRQL0:	AX0 = DM(I3,M0); /* 0x000C: вектор обработки прерывания начала строки (IRQL0) */
-	AY0 = 15;
-	AR = AX0 + AY1, DM(I3,M0) = AR;
-	JUMP row;
-BDMA:	RESET FL0;		/* 0x001C: BDMA*/
-	RTI; nop; nop;
-IRQL1:	AX0 = DM(I2,M0);	/* 0x0008: вектор обработки прерывания кадра (IRQL1) */
-	AR = AX0 + AY1, DM(I2,M0) = AR;
-	DM(I3,M0) = 0;
-	JUMP frame;
-//cam2: 			  /* 0x0020: вектор обработки прерывания начала строки (INT1) */
-/*	  AX1 = DM(I0,M0);
-	DM(I5,M5) = AX1;
-	RTI; nop;*/
-cam1:				/* 0x0024: вектор обработки прерывания (INT0) */
-	AX1 = DM(I0,M0);
-	DM(I4,M5) = AX1;
-	RTI; nop;
-timer1: DIS TIMER;		/* 0x0028: вектор обработки прерываний от таймера, запрет тиков таймера */
-	DM(I0,M1) = nx;
-	I0 = 0x3FE2;
-	JUMP receive;
-iret:	RTI;			/* 0x002C: Power down*/
-start2:
-	nop;//IDLE;		      /* ожидание прерывания окончания закрузки программы из БП */
+.section/pm	boot1;
 	DIS INTS;
-	M0 = 0; 		/* установка инкрементора M4 в 0 */
+	I0 = 0x3FE1;		/* установка адресов BDMA */
+	M1 = 1; 		/* установка инкрементора M1 в 1 */
+	L0 = 0; 		/* установка линейности буффера 0 */
+	DM(I0,M1) = 0;		/* установка адреса BIAD в 0x0 */
+	DM(I0,M1) = 0x60;	/* установка адреса BEAD в 0x60 */
+	DM(I0,M1) = 8;		/* установка направления - запись в ПП из БП с продолжением выполнения программы */
+	DM(I0,M1) = (eop - __reset) * 3; /* запуск копирования из БП в ПП */
+	IDLE;
+
+.section/pm interrupts; 				/*------Interrupt vector table------*/
+    __reset: JUMP start; nop; nop; nop; 	/* 0x0000: Reset vector*/
+irq2:
+	JUMP frame;
+	nop; nop; nop;
+irql1:
+	AX0 = DM(I0,M0);	/* чтение значения счетчика пикселей 1й камеры из регистра BDMA */
+	DM(PROFILES+3) = AX0;	/* сохранение полученного значения в память */
+	RTI; nop;
+irql0:
+	AX0 = DM(I0,M0);	/* чтение значения счетчика пикселей 1й камеры из регистра BDMA */
+	DM(PROFILES+2) = AX0;	/* сохранение полученного значения в память */
+	RTI; nop;
+sport0t:
+	RTI; nop; nop; nop;
+sport0r:
+	RTI; nop; nop; nop;
+irqe:
+	JUMP row;
+	nop; nop; nop;
+bdma:
+	RTI; nop; nop; nop;
+int1:
+	AX0 = DM(I0,M0);	/* чтение значения счетчика пикселей 1й камеры из регистра BDMA */
+	DM(PROFILES+1) = AX0;	/* сохранение полученного значения в память */
+	RTI; nop;
+int0:
+	AX0 = DM(I0,M0);	/* чтение значения счетчика пикселей 1й камеры из регистра BDMA */
+	DM(PROFILES) = AX0;   /* сохранение полученного значения в память */
+	RTI; nop;
+__timer:
+	JUMP pixel;
+	nop; nop; nop;
+powerdown:
+	RTI; nop; nop; nop;
+
 
 
 .section/pm program;
 start:
-	IFC = 0;
-	DM(I0,M1) = 0xF0;	/* установка данных в регисте программируемых флагов PF6-0 в 1 */
-	DM(I0,M1) = 0x2B04;	/* настройка режима програмируемых флагов на ввод и установка 2-х циклов ожидания при чтении (+1 цикл на запись в ОЗУ из рассчета по формуле tBDMA) из регистра данных от камеры */
-	DM(I0,M0) = 0;		/* установка нулевых блоков памяти по умолчанию */
+	ICNTL = 0x17;		/* настройка срабатывания прерываний по перепаду */
+	DIS TIMER;		/* запрет тиков таймера */
+	DIS INTS;		/* запрет прерываний */
+	M0 = 0; 		/* установка инкрементора M0 в 0 */
+	IFC = 0xFF;
+	DM(I0,M1) = 0xFF;	/* установка данных в регисте программируемых флагов PF7-0 в 1 */
+	DM(I0,M1) = 0x7000;	/* настройка режима програмируемого флага 3 на вывод и установка 7-и циклов ожидания при чтении (+1 цикл на запись в ОЗУ из рассчета по формуле tBDMA) из регистра данных от камеры и установка нулевых блоков памяти по умолчанию */
 	I0 = 0x3FFB;		/* TSCALE = 0x3FFB, TCOUNT = 0x3FFC, TPERIOD = 0x3FFD */
-	DM(I0,M1) = 0;		/* настройка умножителя таймера TSCALE в 1 */
+	DM(I0,M1) = 3;		/* настройка умножителя таймера TSCALE в 1 */
 	DM(I0,M1) = pause;	/* настройка счетчика таймера TCOUNT на пропуск сигналов от камер в течение 180 мкс */
 	DM(I0,M1) = pause;	/* настройка счетчика таймера TPERIOD на пропуск сигналов от камер в течение 180 мкс */
 	DM(I0,M1) = 0;		/* настройка циклов ожидания IO */
@@ -91,192 +96,160 @@ start:
 	DM(I0,M0) = 0;		/* отключение особенностей Powerdown */
 	M4 = 0; 		/* установка инкрементора M4 в 0 */
 	M5 = 1; 		/* установка инкрементора M5 в 1 */
-//	  IMASK = 0x100;	  /* маскирование всех прерываний кроме прерывания кадра */
-	imask = 0x4;	      /* маскирование всех прерываний кроме прерывания кадра */
-	AX0 = 0;
-	MR2 = 0;
-	I4 = CAM1;
-	L4 = CAM1 + camsize;
-	I5 = CAM2;
-	L5 = CAM2 + camsize;
-	I6 = CAM3;
-	L6 = CAM3 + camsize;
-	I7 = CAM4;
-	L7 = CAM4 + camsize;
-	I0 = 0x3FE1;
-	L0 = 4;
-	I2 = FRAME;
-	L2 = 0;
-	I3 = ROW;
-	L3 = 0;
-	AY1 = 1;
+	IMASK = IFRAME; 	/* маскирование всех прерываний кроме прерывания кадра */
+	AX0 = 0;		/* обнуление регистра AX0 */
+	I0 = 0x3FFC;		/* установка адреса регистра счетчика таймера */
+	L0 = 0; 		/* установка нулевой длины буфера регистра счетчика таймера */
+	I1 = PROFILES;		/* установка кольцевого буфера на область памяти со значениями профиля */
+	L1 = 0; 		/* установка нулевой длины буфера профилей */
+	I2 = FRAME;		/* установка адреса счетчика кадров */
+	L2 = 0; 		/* буфер для счетчика кадров не используется */
+	I3 = ROW;		/* установка адреса счетчика строк в кадре */
+	L3 = 0; 		/* буфер для счетчика строк не используется */
+	AY1 = 1;		/* загрузка регистра AY1 значением для инкрементации */
 	DM(I2,M0) = 0;		/* сброс счетчика кадров */
-	I0 = 0x3FE1;
-	DM(I0,M1) = 0x4000;	/* установка адреса BIAD в адрес FRAME */
-	DM(I0,M1) = 0;		/* установка адреса BEAD в 0 */
-	DM(I0,M1) = 3;		/* установка режима чтения из ПД в режиме LSB */
 	ENA INTS;		/* разрешение прерываний */
-	SET FL0;
-	//int emulation
-	ifc = 0x400;//frame
-	idle;
-	ifc = 0x1000;//row
-	idle;
-	cntr = 550;
-	do s1 until ce;
-s1:	nop;
-	ifc = 0x400;
-	cntr = 30;
-	do s2 until ce;
-s2:	nop;
-	ifc = 0x200;
-	cntr = 20;
-	do s3 until ce;
-s3:	nop;
-	ifc = 0x400;
-	cntr = 50;
-	do s4 until ce;
-s4:	nop;
-	ifc = 0x200;
-loop1:	IDLE; //ожидание прерывания от BDMA
-	IF FLAG_IN JUMP loop1;
-//	  IMASK = 0x180;
-	imask = 0x14;
-	SET FL0;
-	AX0 = 0xF0;		//блокировка видосигналов
-	DM(0x3FE5) = AX0;
-	RESET FL1;		//выдача сигнала INTR в FL1
-	SET FL1;
-	AX0 = DM(I2,M0);
-	CALL word_output;
-	AX0 = DM(I3,M0);
-	AY0 = 327;
-	AR = AX0 - AY0;
-	IF GE JUMP row_output;
-	AY0 = 15;
-	AR = AX0 - AY0;
-row_output:
-	AX0 = AR;
-	CALL word_output;
-	L1 = 0;
-	MX0 = I4;
-	MX1 = I5;
-	MY0 = I6;
-	MY1 = I7;
-	//смена банков памяти для сохранения результатов
-	AR = MR2 + 1;
-	IF EQ JUMP second_bank;
-	AY0 = CAM1 + camsize * ncams;
-	AR = PASS -1;
-	I4 = CAM1;
-	I5 = CAM2;
-	I6 = CAM3;
-	I7 = CAM4;
-	JUMP processing;
-second_bank:
-	AY0 = CAM1;
-	I4 = CAM1 + camsize * ncams;
-	I5 = CAM2 + camsize * ncams;
-	I6 = CAM3 + camsize * ncams;
-	I7 = CAM4 + camsize * ncams;
-processing:
-	MR2 = AR;
-
-	AX0 = MX0;
-	CALL cam_output;
-	AX0 = camsize;
-	AR = AX0 + AY0, AY0 = AR;
-	AX0 = MX1;
-	CALL cam_output;
-	AX0 = camsize;
-	AR = AX0 + AY0, AY0 = AR;
-	AX0 = MY0;
-	CALL cam_output;
-	AX0 = camsize;
-	AR = AX0 + AY0, AY0 = AR;
-	AX0 = MY1;
-	CALL cam_output;
-	JUMP loop1;
-
-cam_output:
-	AR = AX0 - AY0, AX0 = AR;
-	CALL word_output;
-	AR = PASS AX0;
-	IF EQ RTS;
-	I1 = AY0;
-	CNTR = AR;
-	AX0 = DM(I1,M1);
-	DO cam_output_loop UNTIL CE;
-	CALL word_output;
-cam_output_loop: AX0 = DM(I1,M1);
-	RTS;
-
-word_output:
-	//выводит значение AX0 в порт в/в
-	//AX0: значение для вывода
-	//AF,SR0,SR1,AX1: рарушены
-	AX1 = DM(0x3FE5);
-	AF = TSTBIT 4 OF AX1;
-	IF NE JUMP word_output;
-	IO(0) = AX0;
-	RESET FLAG_OUT;
-	SET FLAG_OUT;
-word_output1:
-	AX1 = DM(0x3FE5);
-	AF = TSTBIT 4 OF AX1;
-	IF EQ JUMP word_output1;
-	SR = ASHIFT MR0 BY -8 (LO);
-wait_dsrtb0:
-	AX1 = DM(0x3FE5);
-	AF = TSTBIT 4 OF AX1;
-	IF NE JUMP wait_dsrtb0;
-	IO(0) = SR0;
-	RESET FLAG_OUT;
-	SET FLAG_OUT;
-wait_dsrtb1:
-	AX1 = DM(0x3FE5);
-	AF = TSTBIT 4 OF AX1;
-	IF EQ JUMP wait_dsrtb1;
-	RTS;
-
+	SET FL0;		/* сброс сигнала ОПД */
+	ax1=0;
+	dm(PAUSESW)=ax1;
+	dm(FRAMESW)=ax1;
+loopm:	IDLE;
+	JUMP loopm;		/* проверка сигнала окончания према данных (ОПД) и если сигнал = 0, то начать вывод результата в паралельный порт */
 
 
 frame:
-	DIS INTS;
+	ax0 = dm(FRAMESW);
+	ar = not ax0;
+	dm(FRAMESW) = ar;
+	if eq jump pause1;
+	AX0 = DM(I2,M0);	/* загрузка значения текущего кадра в регистр AX0 */
+	AR = AX0 + AY1; 	/* инкрементация значения текущего кадра */
+	DM(I2,M0) = AR; 	/* сохранение полученного значения в память */
+	DM(I3,M0) = 0;		/* обнуление значения текущей строки */
+	DIS INTS;		/* запрет прерываний */
+	MR0 = DM(I2,M0);	/* загрузка значения текущего кадра в регистр MR0 */
+	CALL word_output;	/* вызов функции, проводящей вывод значения регистра MR0 в порт В/В */
+	AX0 = last_row;        /* чтение текущей строки приемника */
+	AR = AX0 - first_row;	/* вычитание из значения текущей строки значение строки, с которой начинается нечетный полукадр */
+	MR0 = AR;		/* загрузка значения текущей строки изображения в регистр MR0 */
+	CALL word_output;	/* вызов функции, проводящей вывод значения регистра MR0 в порт В/В */
 	POP STS;		/* получение значение регистра IMASK из стека */
-//	  IMASK = 0x89; 	  /* размаскирование прерывания начала строки, BDMA и таймера */
-	imask = 0x19;	       /* размаскирование прерывания начала строки, BDMA и таймера */
+	IMASK = IFRAME | ITIMER | IROW;  /* размаскирование прерывания начала строки и таймера */
 	PUSH STS;		/* сохранение нового значения регистра IMASK в стек */
-	IMASK = 0;
-	ENA INTS;
+	IMASK = 0;		/* блокирование прерываний */
+	ENA INTS;		/* разрешение прерываний */
 	RTI;
 
+pause1:
+	dis ints;
+	dis timer;
+	pop sts;
+	imask=0;
+	push sts;
+	rti;
 
-row:	AF = AR - AY0;
-	IF LT RTI;
-	AY0 = 313;
-	AF = AR - AY0;
-	IF LT JUMP start_timer;
-	AY0 = 327;
-	AF = AR - AY0;
-	IF LT RTI;
-	AY0 = 625;
-	AF = AR - AY0;
-	IF GE RTI;
-start_timer:
-	ENA TIMER;
+
+
+
+row:
+	reset fl0;
+	set fl0;
+	AX0 = DM(I3,M0);	/* загрузка значения текущей строки в регистр AX0 */
+	AR = AX0 + AY1; 	/* инкрементация значения текущей строки */
+	AY0 = first_row;	/* подготовка определения 15й строки */
+	DM(I3,M0) = AR, AF = AR - AY0;	/* запись полученного результата в память и получение флагового значения результата вычитания нового значения строки и AY0 */
+	IF LT RTI;		/* если значение строки < 15, то выход из обработчика */
+	AY0 = last_row; 	/* подготовка определения 313й строки */
+	AF = AR - AY0;		/* получение флагового значения результата вычитания нового значения строки и AY0 */
+	IF GE RTI;		/* если значение строки < 313, то переход на программу запуска таймера */
+	POP STS;		/* получение значений регистров состояния из стека */
+//	  AX0 = DM(I3,M0);	  /* чтение текущей строки приемника */
+//	  AR = AX0 - first_row;   /* вычитание из значения текущей строки значение строки, с которой начинается нечетный полукадр */
+//	  MR0 = AR;		  /* загрузка значения текущей строки изображения в регистр MR0 */
+//	  AR = AR - AY0;	  /* вычитание из значения текущей строки значение строки, с которой начинается нечетный полукадр */
+//	  MR0 = AR;		  /* загрузка значения текущей строки изображения в регистр MR0 */
+//	  CALL word_output;
+	ENA TIMER;		/* запуск таймера */
+	AX0 = 0;
+	DM(PROFILES) = AX0;	/* сохранение нулевого значения в память */
+	DM(PROFILES+1) = AX0;	  /* сохранение нулевого значения в память */
+	DM(PROFILES+2) = AX0;	  /* сохранение нулевого значения в память */
+	DM(PROFILES+3) = AX0;	  /* сохранение нулевого значения в память */
+	PUSH STS;		/* сохранение нового значения регистров состояния в стек */
 	RTI;
 
+pixel:
+	dis ints;		/* запрет прерываний */
+	pop sts;		/* получение значение регистра IMASK из стека */
+//	  reset fl0, reset fl1, reset fl2;
+//	  set fl0, set fl1, set fl2;
+	AX1 = DM(PAUSESW);
+	AR = NOT AX1;
+	DM(PAUSESW) = AR;
+	IF NE JUMP pixel1;
+	IMASK = IROW | IFRAME | ITIMER;
+	DM(I0,M0) = pause;
+	dis timer;
+	CNTR = 1;		/* загрузка в регистр счетчика количества действующих камер */
+	I1 = PROFILES;			       /* установка кольцевого буфера на область памяти со значениями профиля */
+	DO profiles_output UNTIL CE; /* организация цикла вывода профиля полученного с действующих камер */
+	AY0 = DM(I1,M1);
+	AX0 = nx;
+	AR = AX0 - AY0;
+	MR0 = AR;
+	CALL word_output;
+profiles_output: nop;
+	jump pixel_exit;
+pixel1:
+	IMASK = IROW | IFRAME | ITIMER | IDATA1;
+	DM(I0,M0) = nx;
+pixel_exit:
+	ifc = 0xff;		   /* сброс прерываний ожидающих обработки */
+	push sts;		/* сохранение нового значения регистра IMASK в стек */
+	imask = 0;	     /* блокирование прерываний */
+	ena ints;		/* разрешение прерываний */
+	rti;
 
-receive:
-	DIS INTS;
-	POP STS;		/* получение значение регистра IMASK из стека */
-//	  IMASK = 0x216;	  /* размаскирование прерываний IRQ0,1,2,E и прерывания кадра */
-	imask = 2;	    /* размаскирование прерываний IRQ0,1,2,E и прерывания кадра */
-	PUSH STS;		/* сохранение нового значения регистра IMASK в стек */
-	IMASK = 0;
-	IFC = 0;
-	ENA INTS;
-	RTI;
+
+
+word_output:
+	//функция выводит значение MR0 в порт в/в
+	//MR0: значение для вывода
+	//AF,SR0,SR1,AX1: разрушены
+	reset fl1, reset fl2;
+	set fl1, set fl2;
+	if flag_in jump wait_output5;
+	cntr = 10;
+	do word_outputl1 until ce;
+word_outputl1: nop;
+word_output1:
+	AX1 = DM(0x3FE5);	/* загрузка в регистр AX1 значения сигналов программируемых портов */
+	AF = TSTBIT 0 OF AX1;	/* проверка 0го бита являющегося сигналом DSTRB */
+	IF NE JUMP word_output1; /* ожидание нулевого значения бита */
+	IO(0) = MR0;		/* вывод в порт в/в младшего байта регистра MR0 */
+	RESET FLAG_OUT; 	/* установка низкого (активного) уровня сигнала IWAIT (инверсный WAIT) */
+word_output2:
+	AX1 = DM(0x3FE5);	/* загрузка в регистр AX1 значения сигналов программируемых портов */
+	AF = TSTBIT 0 OF AX1;	/* проверка 0го бита являющегося сигналом DSTRB */
+	IF EQ JUMP word_output2; /* ожидание единичного значения бита */
+	SET FLAG_OUT;		/* установка высокого (пассивного) уровня сигнала IWAIT (инверсный WAIT) */
+	cntr = 10;
+	do word_outputl2 until ce;
+word_outputl2: nop;
+	SR = ASHIFT MR0 BY -8 (LO); /* сдвиг значения регистра MR0 вправо на 8 бит и помещение результата в регистр SR */
+wait_output3:
+	AX1 = DM(0x3FE5);	/* загрузка в регистр AX1 значения сигналов программируемых портов */
+	AF = TSTBIT 0 OF AX1;	/* проверка 0го бита являющегося сигналом DSTRB */
+	IF NE JUMP wait_output3; /* ожидание нулевого значения бита */
+	IO(0) = SR0;		/* вывод в порт в/в младшего байта регистра SR0 (старшего байта MR0) */
+	RESET FLAG_OUT; 	/* установка низкого (активного) уровня сигнала IWAIT (инверсный WAIT) */
+wait_output4:
+	AX1 = DM(0x3FE5);	/* загрузка в регистр AX1 значения сигналов программируемых портов */
+	AF = TSTBIT 0 OF AX1;	/* проверка 0го бита являющегося сигналом DSTRB */
+	IF EQ JUMP wait_output4; /* ожидание единичного значения бита */
+	SET FLAG_OUT;		/* установка высокого (пассивного) уровня сигнала IWAIT (инверсный WAIT) */
+wait_output5:
+	RTS;
+
 
 eop:

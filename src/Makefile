@@ -1,35 +1,38 @@
 # this is a comment
 PROC=adsp-2185
-#SRC=multifi.asm
 SRC=fkr.asm
 OBJ=$(SRC:.asm=.do) # replaces the .asm from SRC with .obj
-EXE=fkr.dxe
-#EXE=multifi.dxe
+BIN=fkr.bin
+EXE=$(BIN:.bin=.dxe)
 LDF=$(PROC).ldf
 
 AS=easm218x
 CC=cc218x
 LINK=linker
-AFLAGS=
-CFLAGS=-L .
-LFLAGS=-Map $(EXE:.dxe=.map) -L.
+BINC=binc
+AFLAGS=-li $(SRC:.asm=.lst) -o $@ -g $< -proc $(PROC)
+CFLAGS=-L .  -proc $(PROC) -o $@ -g $<
+LFLAGS=-Map $(EXE:.dxe=.map) -L. -S -s -o $@ -T $(LDF)
 RM=rm
 
 # combined w/ next line will compile recently changed .asm files
 %.do: %.asm
-	$(AS) $(AFLAGS) -proc $(PROC) -o $@ -g $<
+	$(AS) $(AFLAGS)
 
 %.do: %.c
-	$(CC) $(CFLAGS) -proc $(PROC) -o $@ -g $<
+	$(CC) $(CFLAGS)
+
+$(BIN): $(EXE)
+	$(BINC) $< $@
+
+$(EXE): $(OBJ) $(LDF)  # $(EXE) is dependent on all of the files in $(OBJ) and $(LDF) to exist
+	$(LINK) $(LFLAGS) $(OBJ)
 
 .PHONY : all	 # .PHONY ignores files named all
-all: $(EXE)	 # all is dependent on $(EXE) to be complete
 
-$(EXE): $(OBJ) $(LDF)  # $(EXE) is dependent on all of the files in $(OBJ) to exist
-	$(LINK) $(LFLAGS) -T $(LDF) -o $@ $(OBJ)
+all: $(BIN)	 # all is dependent on $(BIN) to be complete
 
 .PHONY : clean	 # .PHONY ignores files named clean
 clean:
 	-$(RM) $(OBJ) core    # '-' causes errors not to exit the process
 
-.PHONY : release     # .PHONY ignores files named all

@@ -13,6 +13,7 @@ $OBJECTS = $COMMAND_LINE_OBJECTS;
 // 2189 has 32K words (24-bit) of Program RAM and 48K words (16-bit) of Data RAM
 MEMORY
 {
+    seg_boot   { TYPE(BM RAM) START(0x00000) END(0x0001f) WIDTH(24)   }
     seg_inttab { TYPE(PM RAM) START(0x00000) END(0x0002f) WIDTH(24)   }
     seg_code   { TYPE(PM RAM) START(0x00030) END(0x01fff) WIDTH(24)   }
 
@@ -40,6 +41,11 @@ PROCESSOR p0
 	{
 	    INPUT_SECTIONS( $OBJECTS(program) )
 	} >seg_code
+
+	sec_boot
+	{
+	    INPUT_SECTIONS( $OBJECTS(boot1) )
+	} >seg_boot
 
 	sec_framedata
 	{
