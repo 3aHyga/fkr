@@ -1,11 +1,12 @@
 /****************************FKR on ADSP 2185********************************/
-//Їа®Ја ¬¬  а ббзЁв ­­ п ­  ЇаЁс¬ ®¤­®Ј® Є ¤а , ®бв ­®ў ЇаЁс¬  Їа®Ёбе®¤Ёв Ї® ЇаЁс¬г 313 бва®Є, ўлў®¤ ў LPT ®вбгвбвўгҐв
+//программа рассчитанная на приём одного кадра, останов приёма происходит по приёму 313 строк, вывод в LPT отсутствует
 #define nx 440
 #define first_row 16
 #define last_row 307
 #define pause 34
 #define camscount 4
 #define camsize 1024
+#define frame_pause 25
 
 #define ITIMER 0x1
 #define IRQ0   0x2
@@ -115,9 +116,10 @@ start:
 	DM(I2,M0) = 0;		/* сброс счетчика кадров */
 	ENA INTS;		/* разрешение прерываний */
 	SET FL0;		/* сброс сигнала ОПД */
-	ax1=0;
-	dm(PAUSESW)=ax1;
-	dm(FRAMESW)=ax1;
+	ax1 = 0;
+	dm(PAUSESW) = ax1;
+	ax0 = frame_pause;
+	dm(FRAMESW) = ax0;
 	MR1 = 0;
 loopm:	ENA INTS;		/* разрешение прерываний */
 	IDLE;
@@ -143,42 +145,48 @@ loop_output: nop;
 	jump loopm;
 
 
+	RESET FL0, RESET FL1;
+	SET FL0, SET FL1;
+	rti;
+frame_rti:
+	RESET FL2, RESET FLAG_OUT;
+	SET FL2, SET FLAG_OUT;
+	rti;
+
+
 frame:
 	ax0 = dm(FRAMESW);
-	ar = not ax0;
-	dm(FRAMESW) = ar;
-	if eq jump pause1;
+	ar = ax0 - 1;
+	if ne jump frame_next;
+	ax0 = frame_pause;
+	dm(FRAMESW) = ax0;
 	AX0 = DM(I2,M0);	/* загрузка значения текущего кадра в регистр AX0 */
 	AR = AX0 + AY1; 	/* инкрементация значения текущего кадра */
 	DM(I2,M0) = AR; 	/* сохранение полученного значения в память */
 	DM(I3,M0) = 0;		/* обнуление значения текущей строки */
-	DIS INTS;		/* запрет прерываний */
+	I4 = CAMDATA;
 	AX0 = DM(I2,M0);	/* загрузка значения текущего кадра в регистр MR0 */
 	DM(I4,M5) = AX0;
 	AX0 = last_row;        /* чтение текущей строки приемника */
 	AR = AX0 - first_row;	/* вычитание из значения текущей строки значение строки, с которой начинается нечетный полукадр */
 	DM(I4,M5) = AR;
+	DIS INTS;		/* запрет прерываний */
 	POP STS;		/* получение значение регистра IMASK из стека */
 	IMASK = IFRAME | ITIMER | IROW;  /* размаскирование прерывания начала строки и таймера */
 	PUSH STS;		/* сохранение нового значения регистра IMASK в стек */
 	IMASK = 0;		/* блокирование прерываний */
 	ENA INTS;		/* разрешение прерываний */
 	RTI;
-
-pause1:
-	dis ints;
-	dis timer;
-	pop sts;
-	imask=0;
-	push sts;
+frame_next:
+	dm(FRAMESW) = ar;
 	rti;
 
 
 
 
 row:
-	reset fl0;
-	set fl0;
+//	  reset fl0;
+//	  set fl0;
 	AX0 = DM(I3,M0);	/* загрузка значения текущей строки в регистр AX0 */
 	AR = AX0 + AY1; 	/* инкрементация значения текущей строки */
 	AY0 = first_row;	/* подготовка определения 15й строки */
@@ -258,7 +266,7 @@ word_output2:
 	AF = TSTBIT 0 OF AX1;	/* проверка 0го бита являющегося сигналом DSTRB */
 	IF EQ JUMP word_output2; /* ожидание единичного значения бита */
 	SET FLAG_OUT;		/* установка высокого (пассивного) уровня сигнала IWAIT (инверсный WAIT) */
-	cntr = 10;
+	cntr = 30;
 	do word_outputl2 until ce;
 word_outputl2: nop;
 	SR = ASHIFT MR0 BY -8 (LO); /* сдвиг значения регистра MR0 вправо на 8 бит и помещение результата в регистр SR */
